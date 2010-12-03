@@ -64,12 +64,64 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 (defparameter *directory-length* 12)
 (defparameter *directory-buff* (make-string *directory-length*))
 
+(defparameter *current-record-position* 0)
+
+(defparameter *results* '()) ;later I'll make this a bit more sophisticated
+
+
+(defun test-run ()
+  (loop for i from 0 to 100000
+	do (process-next-record *test-file* '("245" "008"))))
+
+
+
+;;for testing
+(defun reset-sys ()
+  (progn
+    (setf *current-record-position* 0)
+    (file-position *test-file* 0)
+    (setf *results* '())))
+
+
+;;process record and leaves file pointer in place for the next cal
+(defun process-next-record (file select-fields)
+  (let* ((base (file-position file *current-record-position*))
+	(offset (process-leader *leader-buff* file))
+	(fields (process-directory *directory-buff* file (- (+ base offset) 1)))
+	(fields-to-fetch (remove-if-not (lambda (x) 
+					  (member (car x) select-fields
+						  :test #'equalp)) fields)))
+    (progn
+      (mapcar (lambda (field)
+		(store-field-results 
+		 (cadr field) 
+		 (+ base offset (caddr field)) 
+		 file))
+	      fields-to-fetch)
+      (setf *current-record-position* (end-of-record base offset fields)))))
+
+
+;;this is very simple just to check that the mechanics of it all work
+(defun store-field-results (len loc file)
+  (let ((buff (make-string len)))
+    (progn
+     (file-position file loc)
+      (read-sequence buff file)
+      (push buff *results*))))
+
+
+
 
 ;right now this only return the base address of the data
 (defun process-leader (buff file)
   (progn
     (read-sequence buff file)
     (parse-integer (subseq buff 12 17))))
+
+;;
+;this is needlessly slow, eat a big chunk
+;all at once and then process that
+;10 records is 2 io requests vs say 1-3 for a big chunk
 
 (defun process-directory-entry (buff file)
   (progn
@@ -83,3 +135,18 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
   (let ((real-end (- end 1)))
     (loop while (< (file-position file) real-end)
 	  collecting (process-directory-entry buff file))))
+
+(defun end-of-record (last-record-start off-set directory-list)
+  (let* ((last-field (car (last directory-list)))
+	 (len-last-field (cadr last-field))
+	 (pos-last-field (caddr last-field)))
+    (+ last-record-start off-set len-last-field pos-last-field 1)))
+
+
+;;this is temp just to get a feel for working with the file info
+(defun calc-nrs (lead-buff directory-buff file)
+  (let* ((last-start (file-position file))
+	(off-set (process-leader lead-buff file))
+	(directory-list (process-directory directory-buff file off-set)))
+    (+ 1 (end-of-record last-start off-set directory-list))))
+

@@ -71,7 +71,7 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 
 (defun test-run ()
   (loop for i from 0 to 100000
-	do (process-next-record *test-file* '("245" "008"))))
+	do (process-next-record *test-file* '("245" "008" "600"))))
 
 
 
@@ -121,8 +121,6 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 ;;
 ;this is needlessly slow, eat a big chunk
 ;all at once and then process that
-;10 records is 2 io requests vs say 1-3 for a big chunk
-
 (defun process-directory-entry (buff file)
   (progn
     (read-sequence buff file)
@@ -130,11 +128,32 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 	  (flen (parse-integer (subseq buff 3 7)))
 	  (start (parse-integer (subseq buff 7 12))))
       (list tag flen start))))
+
+(defun process-directory-entry2 (start seq)
+  (let* ((beginning (* start *directory-length*))
+	 (end (+ *directory-length* beginning))
+	 (my-seq (subseq seq beginning end))
+	 (tag (subseq my-seq 0 3))
+	 (flen (parse-integer (subseq my-seq 3 7)))
+	 (start (parse-integer (subseq my-seq 7 12))))
+    (list tag flen start)))
       
 (defun process-directory (buff file end)
   (let ((real-end (- end 1)))
+    (princ real-end)
     (loop while (< (file-position file) real-end)
 	  collecting (process-directory-entry buff file))))
+
+(defun process-directory2 (file end)
+  (let* ((buff-size (- (1- end) *leader-length*))
+	(dir-buff (make-string buff-size)))
+    (progn
+      (read-sequence dir-buff file)
+      (loop for i from 0 below (/ buff-size 12)
+	    collecting (process-directory-entry2 i dir-buff)))))
+
+
+
 
 (defun end-of-record (last-record-start off-set directory-list)
   (let* ((last-field (car (last directory-list)))

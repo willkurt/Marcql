@@ -71,7 +71,7 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 
 (defun test-run ()
   (loop for i from 0 to 100000
-	do (process-next-record *test-file* '("245" "008" "600"))))
+	do (process-next-record *test-file* '(("245" . (lambda (x) (aref x 3)))))))
 
 
 
@@ -84,32 +84,41 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 
 
 ;;process record and leaves file pointer in place for the next cal
+;; select fields are of the form ( FIELDNUMBER . ACTION)
+;; action must be a named function
 (defun process-next-record (file select-fields)
   (let* ((base (file-position file *current-record-position*))
 	(offset (process-leader *leader-buff* file))
+	(s-fields-only (mapcar #'car select-fields))
 	(fields (process-directory *directory-buff* file (- (+ base offset) 1)))
 	(fields-to-fetch (remove-if-not (lambda (x) 
-					  (member (car x) select-fields
+					  (member (car x) s-fields-only
 						  :test #'equalp)) fields)))
     (progn
       (mapcar (lambda (field)
 		(store-field-results 
 		 (cadr field) 
 		 (+ base offset (caddr field)) 
-		 file))
+		 file
+		 (cdr (assoc (car field) select-fields :test #'equalp))))
 	      fields-to-fetch)
       (setf *current-record-position* (end-of-record base offset fields)))))
 
 
 ;;this is very simple just to check that the mechanics of it all work
-(defun store-field-results (len loc file)
-  (let ((buff (make-string len)))
+(defun store-field-results (len loc file func)
+  (let ((buff (make-string len))
+	(func (if (not func)
+		  #'(lambda (x) x)
+		func)))
     (progn
-     (file-position file loc)
+      (princ func)
+      (file-position file loc)
       (read-sequence buff file)
-      (push buff *results*))))
+      (push (funcall func buff) *results*))))
 
-
+(defun testfun (x)
+  (aref x 2))
 
 
 ;right now this only return the base address of the data
@@ -129,21 +138,14 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 	  (start (parse-integer (subseq buff 7 12))))
       (list tag flen start))))
 
-(defun process-directory-entry2 (start seq)
-  (let* ((beginning (* start *directory-length*))
-	 (end (+ *directory-length* beginning))
-	 (my-seq (subseq seq beginning end))
-	 (tag (subseq my-seq 0 3))
-	 (flen (parse-integer (subseq my-seq 3 7)))
-	 (start (parse-integer (subseq my-seq 7 12))))
-    (list tag flen start)))
-      
 (defun process-directory (buff file end)
   (let ((real-end (- end 1)))
-    (princ real-end)
     (loop while (< (file-position file) real-end)
 	  collecting (process-directory-entry buff file))))
 
+
+;;I only thought these options might be faster
+;;but it doesn't out it doesn't make a difference
 (defun process-directory2 (file end)
   (let* ((buff-size (- (1- end) *leader-length*))
 	(dir-buff (make-string buff-size)))
@@ -152,6 +154,14 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
       (loop for i from 0 below (/ buff-size 12)
 	    collecting (process-directory-entry2 i dir-buff)))))
 
+(defun process-directory-entry2 (start seq)
+  (let* ((beginning (* start *directory-length*))
+	 (end (+ *directory-length* beginning))
+	 (my-seq (subseq seq beginning end))
+	 (tag (subseq my-seq 0 3))
+	 (flen (parse-integer (subseq my-seq 3 7)))
+	 (start (parse-integer (subseq my-seq 7 12))))
+    (list tag flen start)))
 
 
 

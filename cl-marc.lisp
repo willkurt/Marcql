@@ -17,20 +17,6 @@
 		    (loop for read = (read-sequence scratch in)
 			  while (plusp read) sum read))))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ;;the key here is that we only need specific parts of the leader 
 
 
@@ -45,13 +31,16 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
  where pub_year > 1800
 	(090 . z) contains "dog"
 	title equals "Shakespeare") 
-	
-	    
-	 
-
-
-
 |#
+
+
+(defmacro tst (a i)
+  `(add ,(* a 3) ,i))
+
+
+
+
+
 
 ;;right now I'm just worried about the obvious feature of searching for a field
 ;;next step is to add conditionals and actions
@@ -68,11 +57,20 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 
 (defparameter *results* '()) ;later I'll make this a bit more sophisticated
 
+(defparameter *counter* 0)
+
+
+
 
 (defun test-run ()
   (loop for i from 0 to 100000
-	do (process-next-record *test-file* '(("245" . (lambda (x) (aref x 3)))))))
+	do (process-next-record 
+	    *test-file* 
+	    '(("245" . testfun))
+	    :conditions '(("245" . test-test)))))
 
+(defun test-test (x)
+  (search "dog" x)) 
 
 
 ;;for testing
@@ -86,39 +84,75 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 ;;process record and leaves file pointer in place for the next cal
 ;; select fields are of the form ( FIELDNUMBER . ACTION)
 ;; action must be a named function
-(defun process-next-record (file select-fields)
+;;
+;;for now the conditions will world just like actions
+;;i.e. (fieldnumber . condition)
+;;and we'll assume both an AND as well as that
+;;all fields must be present in the record for it to pass
+;;this will be amended later
+(defun process-next-record (file select-fields &key (conditions '()))
   (let* ((base (file-position file *current-record-position*))
 	(offset (process-leader *leader-buff* file))
 	(s-fields-only (mapcar #'car select-fields))
 	(fields (process-directory *directory-buff* file (- (+ base offset) 1)))
-	(fields-to-fetch (remove-if-not (lambda (x) 
+	(select-to-fetch (remove-if-not (lambda (x) 
 					  (member (car x) s-fields-only
 						  :test #'equalp)) fields)))
     (progn
-      (mapcar (lambda (field)
-		(store-field-results 
-		 (cadr field) 
-		 (+ base offset (caddr field)) 
-		 file
-		 (cdr (assoc (car field) select-fields :test #'equalp))))
-	      fields-to-fetch)
+      (when (check-conditions conditions fields file (+ base offset))
+	(mapcar (lambda (field)
+		  (store-field-results 
+		   (cadr field) 
+		   (+ base offset (caddr field)) 
+		   file
+		   (cdr (assoc (car field) select-fields :test #'equalp))))
+		select-to-fetch)
+	(incf *counter*))
       (setf *current-record-position* (end-of-record base offset fields)))))
 
+(defun check-conditions (conditions fields file total-offset)
+  (let* ((c-fields-only (mapcar #'car conditions))
+	 (fields-to-fetch (remove-if-not (lambda (x)
+					   (member (car x) c-fields-only
+						   :test #'equalp)) fields)))
+    (cond
+     ((null conditions) T)
+     ((not (= (length c-fields-only)
+	       (length (remove-duplicates
+			fields-to-fetch)))) '())
+     (T (every #'(lambda (x) (not (null x)))
+	       (mapcar (lambda (c)
+			 (let* ((field-id (car c))
+				(test (cdr c))
+					;note there are cases where there can be more than
+					;one of a field, later we'll have to support that
+				(len-loc-pair (cdr (assoc field-id fields :test #'equalp)))
+				(field-content (get-field (car len-loc-pair)
+						   (+ total-offset (cadr len-loc-pair))
+						   file)))
+			   (funcall test field-content)))
+		       conditions))))))
+		    
+
+
+(defun get-field (len loc file)
+  (let ((buff (make-string len)))
+    (progn
+      (file-position file loc)
+      (read-sequence buff file)
+      buff)))
+  
 
 ;;this is very simple just to check that the mechanics of it all work
 (defun store-field-results (len loc file func)
-  (let ((buff (make-string len))
+  (let ((buff (get-field len loc file))
 	(func (if (not func)
 		  #'(lambda (x) x)
 		func)))
-    (progn
-      (princ func)
-      (file-position file loc)
-      (read-sequence buff file)
-      (push (funcall func buff) *results*))))
+      (push (funcall func buff) *results*)))
 
 (defun testfun (x)
-  (aref x 2))
+  x)
 
 
 ;right now this only return the base address of the data
@@ -163,19 +197,10 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 	 (start (parse-integer (subseq my-seq 7 12))))
     (list tag flen start)))
 
-
-
 (defun end-of-record (last-record-start off-set directory-list)
   (let* ((last-field (car (last directory-list)))
 	 (len-last-field (cadr last-field))
 	 (pos-last-field (caddr last-field)))
     (+ last-record-start off-set len-last-field pos-last-field 1)))
 
-
-;;this is temp just to get a feel for working with the file info
-(defun calc-nrs (lead-buff directory-buff file)
-  (let* ((last-start (file-position file))
-	(off-set (process-leader lead-buff file))
-	(directory-list (process-directory directory-buff file off-set)))
-    (+ 1 (end-of-record last-start off-set directory-list))))
 

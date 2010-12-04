@@ -32,13 +32,45 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 	(090 . z) contains "dog"
 	title equals "Shakespeare") 
 |#
+(defparameter *sample-q* '(select "008" => subfield_a
+				  "245"
+				  "650" => test-fun
+			    where
+			           "245" => test-test))
 
 
 (defmacro tst (a i)
   `(add ,(* a 3) ,i))
 
+(defun where-part (ls)
+  (let ((first (car ls)))
+    (cond ((null first) '())
+	  ((eql 'where first) ls)
+	  (t (where-part (cdr ls))))))
 
+(defun parse-select (ls)
+  (parse-term 'select 'where ls))
 
+(defun parse-where (ls)
+  (parse-term 'where '() ls))
+
+(defun parse-term (start-term end-term ls)
+  "parse the select portion of a marcql query returning the where clause or '()"
+  (let ((first (car ls))  
+	(next (cadr ls))
+	(third (caddr ls)))
+    (cond ((or (null first) (eql first end-term))
+	       '())
+	   ((eql first start-term) 
+	    (parse-select (cdr ls)))
+	   ((eql next '=>) ;in this case there is an action
+	    (cons (cons first third)
+		  (parse-select (cdddr ls))))
+	   (T ;this case we just have a selector
+	    (cons (cons first '())
+		  (parse-select (cdr ls)))))))
+		  
+	      
 
 
 

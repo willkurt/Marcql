@@ -1,68 +1,48 @@
-;;my attempt at making a very fast  marc reader in common lisp
-;; the idea here is not to make a tool for editing marc records
-;; marc record are the enemy
-;; the idea here is to make a very fast means to query large
-;; collections of mark records
-;; remember use: file-position
-(defparameter *test-file-loc* "~/Dropbox/code/marc/will-books-5.out")
-;(defparameter *test-file* (open *test-file-loc*))
+;;Copyright (c) 2010 William Kurt.
+;;All rights reserved.
 
-(defun test (filename)
-  (with-open-file (in filename)
-		  (loop while (read-char in nil) count t)))
+;;Redistribution and use in source and binary forms are permitted
+;;provided that the above copyright notice and this paragraph are
+;;duplicated in all such forms and that any documentation,
+;;advertising materials, and other materials related to such
+;;distribution and use acknowledge that the software was developed
+;;by William Kurt.  The name of the
+;;person may not be used to endorse or promote products derived
+;;from this software without specific prior written permission.
+;;THIS SOFTWARE IS PROVIDED ''AS IS'' AND WITHOUT ANY EXPRESS OR
+;;IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+;;WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE
 
-(defun test2 (filename)
-  (with-open-file (in filename)
-		  (let ((scratch (make-string 4096)))
-		    (loop for read = (read-sequence scratch in)
-			  while (plusp read) sum read))))
-
-(defun test-run ()
-  (marcql-run *test-file-loc* '(("245" . testfun)) '(("245" . test-test))))
-
-(defun test-test (x)
-  (search "dog" x)) 
-
-(defun testfun (x)  x)
+(defpackage :marcql
+  (:use :common-lisp))
+(in-package :marcql)
 
 
-(defun count-me (x)
-  (incf *counter*))
-
-(defun print-first-30 (x)
-  (let ((end (if (< (length x) 30)
-		(length x)
-	      30)))
-  (format T "~a... ~%" (subseq x 0 end))))
-
-(defun contains-dog (x)
-  (search "dog" x))
-
-;;the key here is that we only need specific parts of the leader 
-
-
-#|
-tideal synax
-
-(marcql my-file 
- select "008" => subfield_a
-	distinct title
-	author as low_auth => (lambda (x) (lowercase x))
-note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
- where pub_year > 1800
-	(090 . z) contains "dog"
-	title equals "Shakespeare") 
-|#
-(defparameter *sample-q* '(select "008" => subfield_a
-				  "245"
-				  "650" => test-fun
-			    where
-			           "245" => test-test))
-
-
-(defmacro tst (a i)
-  (let ((a1 (* a 3)))
-  `(+ ,a1 ,i)))
+;; MARC is an abysmal file format for bibliographic data used in libraries.
+;; The purpose of MARCQL is to get data out of MARC records in as pleasant
+;; a way as possible, and as fast as possible.
+;;
+;; If you're goal is to process MARC records this is not the tool for you.
+;; However, if you want to play with bibliographic data, and this aims to
+;; be the least painful way prossible.
+;;
+;; This tool is essentially 2 parts: 
+;;
+;; 1. 'marcql-run' a very minimal, but also
+;; very fast MARC processing function. If your goal is querying records 
+;; this library is an order of magnitude faster than many of the other
+;; tools available.  
+;;
+;; 2. 'marcql' is a small DSL designed to make quering much easier
+;; while not abandoning expressiveness and extensibility.
+;; the basic syntax looks like this
+;; 
+;; (marql <file-name>
+;;        select
+;;           <marc_field_number> | <marc_field_number> => <action>
+;;           ...
+;;        where
+;;           <marc_field_number> =>  <action>)
 
 (defmacro marcql (file-name &rest rest)
   (let ((select-list (parse-select rest))
@@ -96,13 +76,21 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 	   (T ;this case we just have a selector
 	    (cons (cons first '())
 		  (parse-select (cdr ls)))))))
-		  
-	      
 
-
-
-;;right now I'm just worried about the obvious feature of searching for a field
-;;next step is to add conditionals and actions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; The trick to getting a lot of speed out of this library
+;; was to only process the absolute minimum necessary
+;; to run a query.  The leader is processed to get the
+;; offset and the directory of fields is quickly parse
+;; but other than that only necessary fields are processed
+;; 'actions' in marcql take care of any additional 
+;; processing. Want to convert the char-set? Write
+;; an action for it. Want to print to screen? You
+;; guessed it, write an action.
+;;
+;; The major benefit of this philosophy is that you
+;; never pay for more than you need.
+;;
 
 
 
@@ -114,11 +102,6 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 
 (defparameter *current-record-position* 0)
 
-(defparameter *results* '()) ;later I'll make this a bit more sophisticated
-
-(defparameter *counter* 0)
-
-
 (defun marcql-run (file-name selects cnds)
   (with-open-file (fs file-name)
 		  (loop for i from 0 to 100000
@@ -127,17 +110,13 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 			    selects
 			    :conditions cnds))))
 
-
-
 ;;process record and leaves file pointer in place for the next cal
 ;; select fields are of the form ( FIELDNUMBER . ACTION)
 ;; action must be a named function
 ;;
 ;;for now the conditions will world just like actions
 ;;i.e. (fieldnumber . condition)
-;;and we'll assume both an AND as well as that
 ;;all fields must be present in the record for it to pass
-;;this will be amended later
 (defun process-next-record (file select-fields &key (conditions '()))
   (let* ((base (file-position file *current-record-position*))
 	(offset (process-leader *leader-buff* file))
@@ -179,8 +158,6 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 						   file)))
 			   (funcall test field-content)))
 		       conditions))))))
-		    
-
 
 (defun get-field (len loc file)
   (let ((buff (make-string len)))
@@ -195,9 +172,6 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 		  #'(lambda (x) x)
 		func)))
       (funcall func buff)))
-
-
-
 
 ;right now this only return the base address of the data
 (defun process-leader (buff file)
@@ -223,5 +197,3 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 	 (len-last-field (cadr last-field))
 	 (pos-last-field (caddr last-field)))
     (+ last-record-start off-set len-last-field pos-last-field 1)))
-
-

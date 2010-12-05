@@ -5,7 +5,7 @@
 ;; collections of mark records
 ;; remember use: file-position
 (defparameter *test-file-loc* "~/Dropbox/code/marc/will-books-5.out")
-(defparameter *test-file* (open *test-file-loc*))
+;(defparameter *test-file* (open *test-file-loc*))
 
 (defun test (filename)
   (with-open-file (in filename)
@@ -17,13 +17,34 @@
 		    (loop for read = (read-sequence scratch in)
 			  while (plusp read) sum read))))
 
+(defun test-run ()
+  (marcql-run *test-file-loc* '(("245" . testfun)) '(("245" . test-test))))
+
+(defun test-test (x)
+  (search "dog" x)) 
+
+(defun testfun (x)  x)
+
+
+(defun count-me (x)
+  (incf *counter*))
+
+(defun print-first-30 (x)
+  (let ((end (if (< (length x) 30)
+		(length x)
+	      30)))
+  (format T "~a... ~%" (subseq x 0 end))))
+
+(defun contains-dog (x)
+  (search "dog" x))
+
 ;;the key here is that we only need specific parts of the leader 
 
 
 #|
-ideal synax
+tideal synax
 
-(marcql my-file screen
+(marcql my-file 
  select "008" => subfield_a
 	distinct title
 	author as low_auth => (lambda (x) (lowercase x))
@@ -40,7 +61,13 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 
 
 (defmacro tst (a i)
-  `(add ,(* a 3) ,i))
+  (let ((a1 (* a 3)))
+  `(+ ,a1 ,i)))
+
+(defmacro marcql (file-name &rest rest)
+  (let ((select-list (parse-select rest))
+	(where-list (parse-where (where-part rest))))
+    `(marcql-run ,file-name (quote ,select-list)  (quote ,where-list))))
 
 (defun where-part (ls)
   (let ((first (car ls)))
@@ -52,7 +79,7 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
   (parse-term 'select 'where ls))
 
 (defun parse-where (ls)
-  (parse-term 'where '() ls))
+  (parse-term 'where 'end ls))
 
 (defun parse-term (start-term end-term ls)
   "parse the select portion of a marcql query returning the where clause or '()"
@@ -92,25 +119,14 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 (defparameter *counter* 0)
 
 
+(defun marcql-run (file-name selects cnds)
+  (with-open-file (fs file-name)
+		  (loop for i from 0 to 100000
+			do (process-next-record 
+			    fs
+			    selects
+			    :conditions cnds))))
 
-
-(defun test-run ()
-  (loop for i from 0 to 100000
-	do (process-next-record 
-	    *test-file* 
-	    '(("245" . testfun))
-	    :conditions '(("245" . test-test)))))
-
-(defun test-test (x)
-  (search "dog" x)) 
-
-
-;;for testing
-(defun reset-sys ()
-  (progn
-    (setf *current-record-position* 0)
-    (file-position *test-file* 0)
-    (setf *results* '())))
 
 
 ;;process record and leaves file pointer in place for the next cal
@@ -133,13 +149,12 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
     (progn
       (when (check-conditions conditions fields file (+ base offset))
 	(mapcar (lambda (field)
-		  (store-field-results 
+		  (apply-field-func 
 		   (cadr field) 
 		   (+ base offset (caddr field)) 
 		   file
 		   (cdr (assoc (car field) select-fields :test #'equalp))))
-		select-to-fetch)
-	(incf *counter*))
+		select-to-fetch))
       (setf *current-record-position* (end-of-record base offset fields)))))
 
 (defun check-conditions (conditions fields file total-offset)
@@ -170,21 +185,18 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
 (defun get-field (len loc file)
   (let ((buff (make-string len)))
     (progn
-      (file-position file loc)
+      (file-position file (+ 2 loc))
       (read-sequence buff file)
       buff)))
-  
 
-;;this is very simple just to check that the mechanics of it all work
-(defun store-field-results (len loc file func)
+(defun apply-field-func (len loc file func)
   (let ((buff (get-field len loc file))
 	(func (if (not func)
 		  #'(lambda (x) x)
 		func)))
-      (push (funcall func buff) *results*)))
+      (funcall func buff)))
 
-(defun testfun (x)
-  x)
+
 
 
 ;right now this only return the base address of the data
@@ -193,9 +205,6 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
     (read-sequence buff file)
     (parse-integer (subseq buff 12 17))))
 
-;;
-;this is needlessly slow, eat a big chunk
-;all at once and then process that
 (defun process-directory-entry (buff file)
   (progn
     (read-sequence buff file)
@@ -208,26 +217,6 @@ note not like this ->	distinct (600 . a) => (lambda (x) (subject-format x))
   (let ((real-end (- end 1)))
     (loop while (< (file-position file) real-end)
 	  collecting (process-directory-entry buff file))))
-
-
-;;I only thought these options might be faster
-;;but it doesn't out it doesn't make a difference
-(defun process-directory2 (file end)
-  (let* ((buff-size (- (1- end) *leader-length*))
-	(dir-buff (make-string buff-size)))
-    (progn
-      (read-sequence dir-buff file)
-      (loop for i from 0 below (/ buff-size 12)
-	    collecting (process-directory-entry2 i dir-buff)))))
-
-(defun process-directory-entry2 (start seq)
-  (let* ((beginning (* start *directory-length*))
-	 (end (+ *directory-length* beginning))
-	 (my-seq (subseq seq beginning end))
-	 (tag (subseq my-seq 0 3))
-	 (flen (parse-integer (subseq my-seq 3 7)))
-	 (start (parse-integer (subseq my-seq 7 12))))
-    (list tag flen start)))
 
 (defun end-of-record (last-record-start off-set directory-list)
   (let* ((last-field (car (last directory-list)))

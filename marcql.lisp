@@ -23,7 +23,7 @@
 ;; a way as possible, and as fast as possible.
 ;;
 ;; If you're goal is to process MARC records this is not the tool for you.
-;; However, if you want to play with bibliographic data, and this aims to
+;; However, if you want to play with bibliographic data this aims to
 ;; be the least painful way prossible.
 ;;
 ;; This tool is essentially 2 parts: 

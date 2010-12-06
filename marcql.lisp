@@ -37,7 +37,7 @@
 ;; while not abandoning expressiveness and extensibility.
 ;; the basic syntax looks like this
 ;; 
-;; (marql <file-name>
+;; (marcql <file-name>
 ;;        select
 ;;           <marc_field_number> | <marc_field_number> => <action>
 ;;           ...
@@ -81,8 +81,8 @@
 ;; The trick to getting a lot of speed out of this library
 ;; was to only process the absolute minimum necessary
 ;; to run a query.  The leader is processed to get the
-;; offset and the directory of fields is quickly parse
-;; but other than that only necessary fields are processed
+;; offset and the directory of fields is quickly parsed
+;; but other than that only necessary fields are processed.
 ;; 'actions' in marcql take care of any additional 
 ;; processing. Want to convert the char-set? Write
 ;; an action for it. Want to print to screen? You
@@ -112,13 +112,13 @@
 			    :conditions cnds))))
   (setf *current-record-position* 0))
 
-;;process record and leaves file pointer in place for the next cal
+;; process-next-record and leaves file pointer in place for the next call
 ;; select fields are of the form ( FIELDNUMBER . ACTION)
 ;; action must be a named function
 ;;
-;;for now the conditions will world just like actions
-;;i.e. (fieldnumber . condition)
-;;all fields must be present in the record for it to pass
+;; for now the conditions will world just like actions
+;; i.e. (fieldnumber . condition)
+;; all fields must be present in the record for it to pass
 (defun process-next-record (file select-fields &key (conditions '()))
   (let* ((base (file-position file *current-record-position*))
 	(offset (process-leader *leader-buff* file))

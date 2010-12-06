@@ -104,8 +104,10 @@
 
 (defun marcql-run (file-name selects cnds)
   (with-open-file (fs file-name)
-		  (loop for i from 0 to 100000
-			do (process-next-record 
+		  (loop for next-char = (read-char (progn
+						     (file-position fs (1+ *current-record-position*))
+						     fs) nil)
+			while next-char do (process-next-record 
 			    fs
 			    selects
 			    :conditions cnds))))

@@ -92,8 +92,6 @@
 ;; never pay for more than you need.
 ;;
 
-
-
 (defparameter *leader-length* 24)
 (defparameter *leader-buff* (make-string *leader-length*))
 
@@ -103,7 +101,8 @@
 (defparameter *current-record-position* 0)
 
 (defun marcql-run (file-name selects cnds)
-  (with-open-file (fs file-name)
+  (progn
+    (with-open-file (fs file-name)
 		  (loop for next-char = (read-char (progn
 						     (file-position fs (1+ *current-record-position*))
 						     fs) nil)
@@ -111,6 +110,7 @@
 			    fs
 			    selects
 			    :conditions cnds))))
+  (setf *current-record-position* 0))
 
 ;;process record and leaves file pointer in place for the next cal
 ;; select fields are of the form ( FIELDNUMBER . ACTION)
@@ -150,15 +150,20 @@
 			fields-to-fetch)))) '())
      (T (every #'(lambda (x) (not (null x)))
 	       (mapcar (lambda (c)
-			 (let* ((field-id (car c))
+ 			 (let* ((field-id (car c))
 				(test (cdr c))
-					;note there are cases where there can be more than
-					;one of a field, later we'll have to support that
-				(len-loc-pair (cdr (assoc field-id fields :test #'equalp)))
-				(field-content (get-field (car len-loc-pair)
-						   (+ total-offset (cadr len-loc-pair))
-						   file)))
-			   (funcall test field-content)))
+				(all-matching (remove-if-not 
+					       (lambda (x) (equalp field-id (car x)))
+					       fields-to-fetch)))
+			   (some #'(lambda (x) (not (null x)))
+				 (mapcar (lambda (fld)
+					 (let* ((len-loc-pair (cdr fld))
+					       (field-content (get-field (car len-loc-pair)
+									 (+ total-offset (cadr len-loc-pair))
+									 file)))
+					   (funcall test field-content))) all-matching))))
+					 
+
 		       conditions))))))
 
 (defun get-field (len loc file)
@@ -199,3 +204,4 @@
 	 (len-last-field (cadr last-field))
 	 (pos-last-field (caddr last-field)))
     (+ last-record-start off-set len-last-field pos-last-field 1)))
+

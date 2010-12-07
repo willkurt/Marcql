@@ -43,6 +43,10 @@
 ;;           ...
 ;;        where
 ;;           <marc_field_number> =>  <action>)
+(defparameter *default-action* #'not-much)
+
+(defun not-much (x)
+  x)
 
 (defmacro marcql (file-name &rest rest)
   (let ((select-list (parse-select rest))
@@ -74,8 +78,9 @@
 	    (cons (cons first third)
 		  (parse-select (cdddr ls))))
 	   (T ;this case we just have a selector
-	    (cons (cons first '())
-		  (parse-select (cdr ls)))))))
+	    (cons (cons first *default-action*)
+ 		  (parse-select (cdr ls)))))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The trick to getting a lot of speed out of this library

@@ -43,10 +43,10 @@
 ;;           ...
 ;;        where
 ;;           <marc_field_number> =>  <action>)
-(defparameter *default-action* #'not-much)
-
 (defun not-much (x)
   x)
+
+(defparameter *default-action* #'not-much)
 
 (defmacro marcql (file-name &rest rest)
   (let ((select-list (parse-select rest))
@@ -129,9 +129,15 @@
 	(offset (process-leader *leader-buff* file))
 	(s-fields-only (mapcar #'car select-fields))
 	(fields (process-directory *directory-buff* file (- (+ base offset) 1)))
-	(select-to-fetch (remove-if-not (lambda (x) 
+	;the sort here is used to make sure that the fields are in the same
+	;order the user wrote them in the original select statement
+	;this is a pretty useful guarantee for doing complex select actions
+	(select-to-fetch (sort (remove-if-not (lambda (x) 
 					  (member (car x) s-fields-only
-						  :test #'equalp)) fields)))
+						  :test #'equalp)) fields)
+			       (lambda (a b) (< (position (car a) s-fields-only :test #'equalp)
+						(position (car b) s-fields-only :test #'equalp))))))
+			       				
     (progn
       (when (check-conditions conditions fields file (+ base offset))
 	(mapcar (lambda (field)
@@ -185,6 +191,9 @@
 		func)))
       (funcall func buff)))
 
+(defun sort-in-order-of (ls-a ls-b)
+  (sort ls-b (lambda (x y) (< (position x ls-a :test #'equalp)
+			      (position y ls-a :test #'equalp)))))
 ;right now this only return the base address of the data
 (defun process-leader (buff file)
   (progn

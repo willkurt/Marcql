@@ -117,6 +117,7 @@
 			    :conditions cnds))))
   (setf *current-record-position* 0))
 
+
 ;; process-next-record and leaves file pointer in place for the next call
 ;; select fields are of the form ( FIELDNUMBER . ACTION)
 ;; action must be a named function
@@ -128,7 +129,8 @@
   (let* ((base (file-position file *current-record-position*))
 	(offset (process-leader *leader-buff* file))
 	(s-fields-only (mapcar #'car select-fields))
-	(fields (process-directory *directory-buff* file (- (+ base offset) 1)))
+	(fields (append (make-lead-dir-list offset)
+			(process-directory *directory-buff* file (- (+ base offset) 1))))
 	;the sort here is used to make sure that the fields are in the same
 	;order the user wrote them in the original select statement
 	;this is a pretty useful guarantee for doing complex select actions
@@ -148,6 +150,10 @@
 		   (cdr (assoc (car field) select-fields :test #'equalp))))
 		select-to-fetch))
       (setf *current-record-position* (end-of-record base offset fields)))))
+
+(defun make-lead-dir-list (offset)
+    (list (list "leader" *leader-length* (- offset))
+	 (list  "directory" (- offset *leader-length*) (+ *leader-length* (- offset)))))
 
 (defun check-conditions (conditions fields file total-offset)
   (let* ((c-fields-only (mapcar #'car conditions))
@@ -180,7 +186,7 @@
 (defun get-field (len loc file)
   (let ((buff (make-string len)))
     (progn
-      (file-position file (+ 2 loc))
+      (file-position file (+ 0 loc))
       (read-sequence buff file)
       buff)))
 

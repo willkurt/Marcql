@@ -43,6 +43,9 @@
 ;;           ...
 ;;        where
 ;;           <marc_field_number> =>  <action>)
+(defparameter *subfield-delimiter* (string #\Us))
+(defparameter *field-delimiter* (string #\Rs)) ;;haven't confirmed
+
 (defun not-much (x)
   x)
 

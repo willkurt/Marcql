@@ -53,7 +53,6 @@
 (marcql *marc-file*
 	select
 	   "245" => count-title)
-
 (print "done with 2nd query")
 ;; after this runs you still won't see anything
 ;; we have to actually access the counter
